@@ -1,0 +1,151 @@
+---
+title: "Project 1"
+output: html_document
+date: "2022-10-21"
+author: Stacy Meng, Sammy Park, Neha Pavuluru, Anika Sharma
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load the data
+```{r}
+sourcedir <-"/Users/SammyCPark/Desktop/SYS 4021/"
+traindir <- "/Users/SammyCPark/Desktop/SYS 4021/Data/TrainData"
+setwd(sourcedir)
+source("AccidentInput.R")
+
+# load the data
+acts <- file.inputl(traindir)
+
+# combine all the data into one data frame
+totacts <- combine.data(acts)
+setwd(sourcedir)
+```
+
+# Source files and load libraries
+```{r}
+source("SPM_Panel.r")
+source("PCAplots.r")
+library(lattice)
+library(ggplot2)
+library(GGally)
+library(devtools)
+library(car)
+library(here)
+library(dplyr)
+library(ggpubr)
+library(ggfortify)
+library(MASS)
+library(lindia)
+library(olsrr)
+```
+
+# Question 1: Cleaning up the data for extreme accident damages, visualizations, summary stats
+```{r}
+dmgbox <- boxplot(totacts$ACCDMG)
+xdmg <- totacts[totacts$ACCDMG > dmgbox$stats[5],]
+
+# Remove 9/11
+xdmg <- xdmg[-185,]
+
+# Remove the duplicates
+xdmgnd <- xdmg[!(duplicated(xdmg[,c("INCDTNO", "YEAR", "MONTH", "DAY", "TIMEHR", "TIMEMIN")])),]
+
+# Rename TYPE and TYPEQ from a number to a character description
+xdmgnd$Type <- factor(xdmgnd$TYPE, labels = c("Derailment", "HeadOn", "Rearend", "Side", "Raking", "BrokenTrain", "Hwy-Rail", "GradeX", "Obstruction", "Explosive", "Fire","Other","SeeNarrative"))
+
+xdmgnd$TYPEQ <- as.numeric(xdmgnd$TYPEQ)
+xdmgnd$TYPEQ <- factor(xdmgnd$TYPEQ, labels = c("Freight", "Passenger", "Commuter", "Work",  "Single", "CutofCars", "Yard", "Light", "Maint"))#, "Spec"))
+
+# Create a new factor variable called Cause that uses labels for cause.
+xdmgnd$Cause <- rep(NA, nrow(xdmgnd))
+xdmgnd$Cause[which(substr(xdmgnd$CAUSE, 1, 1) == "M")] <- "M"
+xdmgnd$Cause[which(substr(xdmgnd$CAUSE, 1, 1) == "T")] <- "T"
+xdmgnd$Cause[which(substr(xdmgnd$CAUSE, 1, 1) == "S")] <- "S"
+xdmgnd$Cause[which(substr(xdmgnd$CAUSE, 1, 1) == "H")] <- "H"
+xdmgnd$Cause[which(substr(xdmgnd$CAUSE, 1, 1) == "E")] <- "E"
+xdmgnd$Cause <- factor(xdmgnd$Cause)
+
+uva.pairs(xdmgnd[,c("ACCDMG", "TRNSPD", "TONS", "CARS", "HEADEND1", "TEMP")])
+xdmgnd$LACCDMG <- log(xdmgnd$ACCDMG)
+
+### TRNSPD has the highest correlation, then TONS has the second highest compared to ACCDMG
+uva.pairs(xdmgnd[,c("LACCDMG", "TRNSPD", "TONS", "CARS","HEADEND1", "TEMP")])
+
+#Frequency of different types of accidents
+barplot(table(xdmgnd$Cause))
+
+### Boxplots of accident damage conditioned on accident cause 
+bwplot(Cause~ log(ACCDMG), main = "Box Plots of Accident Damage by Cause of Accident", xlab = "Damage ($)", ylab = "Accident Cause", data = xdmgnd)
+
+### Total cost of accidents by cause as a proportion of total accident damage
+sumbycause<- as.numeric(tapply(as.numeric(xdmgnd$ACCDMG), as.factor(xdmgnd$Cause), sum))
+propcause <- sumbycause / sum(as.numeric(xdmgnd$ACCDMG))
+propcause
+
+#Define cut point for high and low speed
+Speed <- cut(xdmgnd$TRNSPD, c(min(xdmgnd$TRNSPD), median(xdmgnd$TRNSPD),max(xdmgnd$TRNSPD)), include.lowest = T, labels = c("low speed", "high speed"))
+
+### Looking at the interaction plot, we can see that the slope of the lines differ for high weight and low weight human factors causes. The intercept and slopes vary, suggesting there should be both an interaction and a main effects term in the model.
+xdmgnd$HF <- (xdmgnd$Cause == "H")
+Tons <- cut(xdmgnd$TONS, c(min(xdmgnd$TONS), median(xdmgnd$TONS), max(xdmgnd$TONS)), include.lowest = T, labels = c("low weight", "high weight"))
+ggplot() +
+  aes(x = xdmgnd$HF, y = log(xdmgnd$ACCDMG), group = Tons, color = Tons) +
+  stat_summary(fun = mean, geom = "point") +
+  stat_summary(fun = mean, geom = "line")
+
+```
+
+
+# Question 2
+```{r}
+# 2b: Transform cause variable into dummy variable with 1 with "H" (human factors) and 0 with all the other causes
+HF <- rep(0, nrow(xdmgnd))
+HF[which(xdmgnd$Cause == "H")] <- 1
+HF <- as.factor(HF)
+
+# 2a: 
+xdmgnd.lm1.main<-lm(ACCDMG~HF+ TONS + TEMP + CARS + HEADEND1,data=xdmgnd)
+
+xdmgnd.lm1.inter<-lm(ACCDMG~(HF+ TONS + TEMP + CARS + HEADEND1)^2,data=xdmgnd)
+
+xdmgnd.lm1.main.step<- step(xdmgnd.lm1.main, trace = F)
+summary(xdmgnd.lm1.main.step)
+
+# 2c: Same AIC values
+AIC(xdmgnd.lm1.main)
+AIC(xdmgnd.lm1.main.step)
+AIC(xdmgnd.lm1.inter)
+AIC(xdmgnd.lm1.inter.step)
+
+xdmgnd.lm1.inter.step<- step(xdmgnd.lm1.inter, trace = F)
+summary(xdmgnd.lm1.inter.step)
+
+# Step interaction model has lower AIC value
+
+
+# Interaction step > main step
+anova(xdmgnd.lm1.main.step, xdmgnd.lm1.inter.step)
+
+# 2d: Diagnose
+autoplot(xdmgnd.lm1.inter.step, which = c(1,2,3,5), ncol = 2, label.size = 3) + theme_bw()
+xdmgnd.lm1.inter<-lm(ACCDMG~(HF+ TONS + TEMP + CARS + HEADEND1)^2,data=xdmgnd)
+autoplot(xdmgnd.lm1.inter.step, which=4, ncol = 1, label.size = 3) + theme_bw() #Cook's distance
+
+# 2e: boxcox adjustment
+boxcox(xdmgnd.lm1.inter,plotit = T, lambda = seq(-1,1), by = 0.1)
+L<-boxcox(xdmgnd.lm1.inter, plotit = F)$x[which.max(boxcox(xdmgnd.lm1.inter, plotit = F)$y)] 
+L
+xdmgnd.lm1.inter.boxcox<-lm((ACCDMG^L-1)/L~(HF+TONS + TEMP + CARS + HEADEND1)^2,data=xdmgnd)
+
+xdmgnd.lm1.inter.boxcox
+
+xdmgnd.lm1.inter.boxcox.step<- step(xdmgnd.lm1.inter.boxcox, trace = F)
+summary(xdmgnd.lm1.inter.boxcox.step)
+
+autoplot(xdmgnd.lm1.inter.boxcox.step, which = c(1,2,3,5), ncol = 2, label.size = 3) + theme_bw()
+autoplot(xdmgnd.lm1.inter.boxcox.step, which=4, ncol = 1, label.size = 3) + theme_bw() #Cook's distance
+```
+
