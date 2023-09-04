@@ -2,7 +2,6 @@
 title: "Project 1"
 output: html_document
 date: "2022-10-21"
-author: Stacy Meng, Sammy Park, Neha Pavuluru, Anika Sharma
 ---
 
 ```{r setup, include=FALSE}
@@ -11,8 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Load the data
 ```{r}
-sourcedir <-"/Users/SammyCPark/Desktop/SYS 4021/"
-traindir <- "/Users/SammyCPark/Desktop/SYS 4021/Data/TrainData"
+traindir <- "~/TrainData"
 setwd(sourcedir)
 source("AccidentInput.R")
 
