@@ -9,16 +9,12 @@ date: '2022-12-04'
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-# Names 
-
-Stacy Meng, Sammy Park, Neha Pavuluru, Anika Sharma
 
 # Library Setup: 
 
 Here, we are importing the necessary libraries. 
 ```{r}
 require("knitr")
-sourcedir <-"C:/Users/Neha/Documents/SYS4021/RCode"
 opts_knit$set(root.dir = sourcedir)
 library(forecast)
 library(mtsdi)
